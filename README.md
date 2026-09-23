@@ -8,14 +8,16 @@ retail, Mists of Pandaria Classic, Cataclysm, Wrath, and Classic Era.
 
 - Hooks the game's emote system so any `/fart` (typed by you) triggers a sound.
 - Adds its own independent **`/prrt`** emote (alias `/brap`) that plays a sound
-  and posts a random custom fart line of its own — no stock Blizzard emote text.
+  and posts a custom fart line of its own — no stock Blizzard emote text. Each
+  sound has its own signature line, and that line doubles as a hidden signal so
+  **anyone nearby with the addon plays the exact same sound, no group required.**
   See [The two ways to fart](#the-two-ways-to-fart) below.
-- Picks a random file from your sound pool and avoids repeating the same one twice in a row.
+- Picks a weighted-random file from your sound pool (so rare sounds stay rare) and avoids repeating the same one twice in a row.
 - Plays on the **Master** channel so it's audible even if in-game SFX volume is low, with an automatic fall back to the SFX channel.
-- **Reacts to other players who also run Flatulence.** When someone in your
-  group farts, you hear the same sound they played *and* your character fires
-  back one of 40+ custom emotes ranging from extreme disgust to utter delight.
-  See [Reactions](#reactions) below.
+- **Reacts to other players who also run Flatulence.** When someone nearby (or
+  in your group) farts, you hear the same sound they played *and* your character
+  fires back one of 40+ custom emotes ranging from extreme disgust to utter
+  delight. See [Reactions](#reactions) below.
 - Ships with a small config command; the emote itself needs no configuration.
 
 ## The two ways to fart
@@ -28,22 +30,46 @@ purpose:
   sound and the groupmate broadcast. Familiar and discoverable; you don't own
   the emote text.
 - **`/prrt`** (alias `/brap`) — the addon's own emote, fully independent of
-  Blizzard's. It plays a random sound, broadcasts to groupmates, and posts one
-  of its own randomized fart lines (e.g. "*YourName* unleashes a thunderous rip
-  that echoes off the walls.") instead of the stock text. Use this when you want
-  the addon to own the whole experience.
+  Blizzard's. It plays a random sound and posts *that sound's* signature line
+  (e.g. "*YourName* unleashes a thunderous rip that echoes off the walls.")
+  instead of the stock text. Use this when you want the addon to own the whole
+  experience — and when you want **nearby** players to react, not just
+  groupmates (see below).
 
-Both play a sound, both notify groupmates (who then hear it and react). The only
-difference is the emote text that accompanies them. The `/prrt` action lines
-live in the `FART_ACTION_EMOTES` table at the top of `Core.lua` — add or rewrite
-them freely; each continues the sentence "`<YourName> ...`".
+Both play a sound. `/fart` notifies groupmates over the addon channel. `/prrt`
+does that **and** reaches everyone in emote range, grouped or not, by using its
+emote line as the signal. The `/prrt` action lines live in the
+`FART_ACTION_EMOTES` table at the top of `Core.lua`.
+
+### How `/prrt` reaches nearby players
+
+WoW has no addon-messaging channel for "everyone in shouting distance," so
+`/prrt` piggybacks on something that *is* proximity-based: the emote itself.
+
+1. `/prrt` picks a random sound, say fart #3.
+2. It posts fart #3's dedicated line as a normal `/emote`. Everyone in emote
+   range sees it — that's Blizzard's standard proximity emote, no group needed.
+3. Other Flatulence users read that emote off the `CHAT_MSG_TEXT_EMOTE` event,
+   match the text back to its index, and play **the same** fart #3 locally.
+4. Players *without* the addon just see a funny emote line. No spam, no tokens.
+
+Because the emote text is the signal, the lines are **index-aligned** with
+`SOUND_FILES`: the line at position N is the signature for sound N, and each
+line must be unique. If you add a sound, add a matching unique line at the same
+position in `FART_ACTION_EMOTES`. Groupmates who are out of emote range still
+hear it via the group addon channel; a player who is both grouped and in range
+is de-duplicated so the sound plays only once.
 
 ## Reactions
 
-When you `/fart` or `/prrt`, the addon sends a hidden addon message. Anyone nearby who is
-**also running Flatulence** picks a random reaction and performs it back at you
-as a custom text emote — so a fart in a group gets a chorus of gagging,
-laughing, cheering, and glaring.
+When you fart, other Flatulence users pick a random reaction and perform it back
+at you as a custom text emote — so a fart gets a chorus of gagging, laughing,
+cheering, and glaring. How far it reaches depends on which command you used:
+
+- **`/prrt`** reaches **everyone in emote range**, grouped or not, via the
+  emote-line signal described above.
+- **`/fart`** (Blizzard's hooked emote) still notifies **groupmates only**, over
+  the addon channel — see the limitation below.
 
 The reactions are 40+ hand-written custom emotes ranging from **extreme
 disgust** ("gags violently and looks for the nearest exit.") through amusement
@@ -54,21 +80,22 @@ around the reacting player, not just the group.
 
 Details and limitations:
 
-- **The trigger is group-scoped.** WoW does not provide an addon communication
-  channel for "everyone in shouting distance," so the fart notification travels
-  on your party/raid/instance channel. Reactions therefore come from people
-  grouped with you (party, raid, dungeon, or battleground). Random strangers in
-  a city won't react, even if they have the addon. (The reaction emote itself,
-  once fired, is a normal text emote seen by everyone nearby.)
+- **`/prrt` is proximity-scoped; `/fart` is group-scoped.** For `/prrt`, the
+  signal rides the emote itself, so any Flatulence user within emote range
+  reacts — a stranger in a city included. For `/fart`, WoW gives no addon
+  channel for "everyone in shouting distance," so its notification travels on
+  your party/raid/instance channel and only groupmates react. (Either way, the
+  reaction emote, once fired, is a normal text emote seen by everyone nearby.)
 - **Both players need the addon** for a reaction to trigger. Players without
-  Flatulence just see your normal `/fart` emote.
-- **Listeners also hear the fart.** When a groupmate farts, your client plays
+  Flatulence just see your normal emote line.
+- **Listeners also hear the fart.** When someone nearby farts, your client plays
   the sound locally too — and it plays *the same* sound they did, not a random
-  one. This works by sending the sound's list index in the message, so it only
-  matches correctly when both players share the same `SOUND_FILES` list in the
-  same order (e.g. the same addon install). If the lists differ, the listener
-  falls back to a random sound rather than erroring. Toggle this with
-  `/flatulence hear off`.
+  one. This works because the sound's index is carried in the signal (the
+  `/prrt` emote line, or the `/fart` group message), so it only matches
+  correctly when both players share the same `SOUND_FILES` list — and, for
+  `/prrt`, the same `FART_ACTION_EMOTES` lines — in the same order (e.g. the
+  same addon install). If they differ, the listener falls back to a random sound
+  rather than erroring. Toggle this with `/flatulence hear off`.
 - A per-client cooldown and an optional chance roll keep reactions from turning
   into spam or feedback loops. (The cooldown gates the emote reaction; the
   heard sound plays each time.)
@@ -112,7 +139,20 @@ Then:
 1. Drop `.ogg` or `.mp3` files into `Flatulence\Sounds\`.
 2. Make sure each file is listed in the `SOUND_FILES` table near the top of
    `Core.lua`. The defaults expect `fart1.mp3` … `fart9.mp3`.
-3. **Fully restart the client.** WoW indexes sound files on disk at launch, so a
+3. Add a matching **unique** line to `FART_ACTION_EMOTES` at the *same position*
+   as the sound in `SOUND_FILES`. This table is index-aligned with the sound
+   list: line N is the `/prrt` signature for sound N, and it's how nearby addon
+   users know which sound to play. Keep the two tables the same length and order.
+   The bundled lines are written to *describe* each sound (a short one reads as a
+   quick blip, a long wet one as a catastrophic shart, etc.) — rewrite them to
+   fit your own audio.
+4. *(Optional)* Adjust how often a sound plays via `SOUND_WEIGHTS`, also
+   index-aligned. Weights are relative (a weight of 10 plays 10x as often as 1);
+   anything not listed uses `DEFAULT_SOUND_WEIGHT`. The default config keeps
+   `fart8` (a rare "catastrophic shart") at weight 1 against the others' 10, so
+   it lands roughly 1 in 80 farts. Set a weight to 0 to keep a file installed
+   but never auto-played.
+5. **Fully restart the client.** WoW indexes sound files on disk at launch, so a
    `/reload` will not pick up newly added audio.
 
 > **Publishing?** The addon ships with **no audio** — you must add your own, and
@@ -124,7 +164,7 @@ Then:
 | Command | Effect |
 | --- | --- |
 | `/fart` | Blizzard's emote (hooked) — random sound + stock text, notifies groupmates. |
-| `/prrt` (alias `/brap`) | The addon's own emote — random sound + random custom line, notifies groupmates. |
+| `/prrt` (alias `/brap`) | The addon's own emote — random sound + that sound's signature line; nearby addon users (grouped or not) play the same sound and react. |
 | `/flatulence on` / `off` / `toggle` | Enable or disable your own sounds. |
 | `/flatulence test` | Play a random sound now. |
 | `/flatulence react on` / `off` | Enable or disable reacting to others' farts. |
@@ -173,7 +213,9 @@ The design keeps everything version-specific in two places:
 - The addon **hooks** `DoEmote` with `hooksecurefunc` instead of overriding
   `/fart`. This is non-tainting and leaves Blizzard's real emote (text + any
   built-in vocal sound) fully intact.
-- Reactions use standard addon messaging (`C_ChatInfo.SendAddonMessage`), the
-  same mechanism countless mainstream addons use. It sends a tiny hidden
-  `"FART"` payload on your group channel — no chat spam, no whispers.
+- `/prrt` reactions are proximity-based: they ride the `CHAT_MSG_TEXT_EMOTE`
+  event, matching the emote's text back to a sound index — no addon message and
+  no group needed. `/fart` reactions use standard addon messaging
+  (`C_ChatInfo.SendAddonMessage`), sending a tiny hidden `"FART:<index>"` payload
+  on your group channel — no chat spam, no whispers.
 - No audio is bundled — add your own so you control content and licensing.

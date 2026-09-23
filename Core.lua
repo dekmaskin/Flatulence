@@ -31,6 +31,17 @@ local SOUND_FILES = {
     [[Interface\AddOns\Flatulence\Sounds\fart9.mp3]],
 }
 
+-- Relative selection weight for each sound, index-aligned with SOUND_FILES.
+-- Higher = more common. A sound with no entry defaults to weight 1. These are
+-- relative, not percentages: a weight of 10 is picked 10x as often as a weight
+-- of 1. fart8 is the rare "catastrophic shart", so it gets a low weight.
+local SOUND_WEIGHTS = {
+    [8] = 1,   -- fart8: really long wet shart -- rare (see below for the odds)
+}
+-- Default weight given to any sound not listed in SOUND_WEIGHTS above. With 8
+-- sounds at weight 10 and fart8 at weight 1, fart8 lands ~1 in 81 farts (~1.2%).
+local DEFAULT_SOUND_WEIGHT = 10
+
 -- The emote token WoW uses internally for /fart. This is stable across versions.
 local FART_EMOTE_TOKEN = "FART"
 
@@ -112,25 +123,48 @@ local STOCK_EMOTE_TOKENS = {
 
 -- Custom emote text used by the addon's OWN /prrt command (see below). Unlike
 -- /fart, /prrt does not use Blizzard's built-in emote at all -- it posts one of
--- these lines at random as a custom text emote. Each string continues the
--- sentence "<YourName> ...".
+-- these lines as a custom text emote.
+--
+-- IMPORTANT: this table is INDEX-ALIGNED with SOUND_FILES. The line at index N
+-- is the dedicated "signature" for sound N. When you /prrt, the addon plays a
+-- random sound and posts THAT sound's line. Other Flatulence users nearby read
+-- the emote off the CHAT_MSG_TEXT_EMOTE event, match the text back to its
+-- index, and play the SAME sound -- so everyone in emote range hears the same
+-- fart, no group required.
+--
+-- Because the emote text IS the signal, each line must be UNIQUE and there must
+-- be exactly one line per sound file (same count and order as SOUND_FILES).
+-- If you add a sound, add a matching line here at the same position. Each
+-- string continues the sentence "<YourName> ...".
+-- Each line is written to match the SOUND it maps to (see the descriptions in
+-- the comments). Keep this in sync if you swap the audio.
 local FART_ACTION_EMOTES = {
-    "unleashes a thunderous rip that echoes off the walls.",
-    "lets one rip with tremendous confidence.",
-    "squeezes out a long, mournful trumpet note.",
-    "releases a silent but deadly cloud of doom.",
-    "produces a staccato burst worthy of a war drum.",
-    "cuts the cheese with alarming enthusiasm.",
-    "emits a low, rumbling growl from below.",
-    "fires off a quick, cheeky little toot.",
-    "rattles the floorboards with a mighty blast.",
-    "lets loose a bubbly, gurgling serenade.",
-    "punctuates the silence with an impressive honk.",
-    "drops a gas bomb and calmly walks away.",
-    "trills a delicate, flute-like whistle.",
-    "detonates without warning or remorse.",
-    "sighs with relief after a truly historic release.",
+    [1] = "lets one rip with easy, unhurried confidence.",          -- fart1: standard, medium-long
+    [2] = "squeaks out a high, pinched little toot.",               -- fart2: squeaky short
+    [3] = "pops off a quick, matter-of-fact fart.",                 -- fart3: standard short
+    [4] = "produces a short, distinctly moist splat.",              -- fart4: wet short
+    [5] = "unfurls a long, steady, workmanlike rumble.",            -- fart5: standard medium-long
+    [6] = "sounds a long, brassy trumpet note from below.",         -- fart6: longer, trumpet-sounding
+    [7] = "looses a deep, drawn-out bassy groan.",                  -- fart7: deeper, medium-long
+    [8] = "unleashes a catastrophic, wet, seemingly endless shart.",-- fart8: really long wet shart (rare)
+    [9] = "fires off one tiny, cheeky blip.",                       -- fart9: very short
 }
+
+-- Reverse lookup: normalized emote line -> sound index. Built once at load.
+-- Receivers use this to decode which sound to play from an incoming emote.
+local FART_ACTION_BY_TEXT = {}
+
+-- Normalize an emote line for robust matching: lowercase and collapse runs of
+-- whitespace. This makes the match tolerant of minor formatting differences in
+-- how the CHAT_MSG_TEXT_EMOTE string is delivered across game versions.
+local function NormalizeEmote(text)
+    if type(text) ~= "string" then return nil end
+    return text:lower():gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+for index, line in pairs(FART_ACTION_EMOTES) do
+    FART_ACTION_BY_TEXT[NormalizeEmote(line)] = index
+end
 
 -- Default saved settings.
 local DEFAULTS = {
@@ -140,7 +174,6 @@ local DEFAULTS = {
     react = true,       -- react to OTHER players' farts with an emote
     reactChance = 100,  -- percent chance to react (0-100), keeps it from being spammy
     lastReactIndex = 0, -- avoid repeating the same reaction emote twice in a row
-    lastActionIndex = 0,-- avoid repeating the same /prrt action emote in a row
     hearOthers = true,  -- also play the sound locally when someone nearby farts
 }
 
@@ -148,6 +181,13 @@ local DEFAULTS = {
 local playerName            -- our own name, used to ignore our own broadcasts
 local lastReactAt = 0       -- GetTime() of our last reaction, for cooldown
 local REACT_COOLDOWN = 8    -- seconds; prevents emote spam / feedback loops
+
+-- De-duplication: a player who is BOTH grouped with us AND within emote range
+-- delivers the same fart twice -- once via the group addon message and once via
+-- the CHAT_MSG_TEXT_EMOTE. We remember the last-handled "sender:index" for a
+-- short window and drop the duplicate so the sound doesn't play twice.
+local lastHandled = {}         -- shortSenderName -> { index = n, at = GetTime() }
+local DEDUP_WINDOW = 3         -- seconds
 
 -- ---------------------------------------------------------------------------
 -- Compatibility shims (the only place that needs version-specific attention)
@@ -214,19 +254,71 @@ local function InCombat()
     return InCombatLockdown and InCombatLockdown() or false
 end
 
--- Pick a random sound, avoiding an immediate repeat when we have >1 sound.
+-- Weight for a given sound index (falls back to the default weight). Clamped to
+-- a minimum of 0; a 0-weight sound is never chosen at random.
+local function WeightFor(index)
+    local w = SOUND_WEIGHTS[index]
+    if w == nil then w = DEFAULT_SOUND_WEIGHT end
+    if type(w) ~= "number" or w < 0 then w = 0 end
+    return w
+end
+
+-- Pick a sound using SOUND_WEIGHTS, avoiding an immediate repeat when we have
+-- more than one eligible sound. Weighted roulette: sum the weights, roll a
+-- point in that range, and walk until we pass it. The no-repeat pass simply
+-- excludes the last-played index from the pool (unless it's the only option).
 local function PickSound()
     local count = #SOUND_FILES
     if count == 0 then
         return nil
     elseif count == 1 then
+        FlatulenceDB.lastIndex = 1
         return SOUND_FILES[1], 1
     end
 
+    local last = FlatulenceDB.lastIndex
+
+    -- Total weight of all candidates except the last-played one.
+    local total = 0
+    for i = 1, count do
+        if i ~= last then
+            total = total + WeightFor(i)
+        end
+    end
+
+    -- If excluding the last sound leaves nothing pickable (e.g. every other
+    -- sound is weight 0), fall back to allowing any positive-weight sound.
+    if total <= 0 then
+        for i = 1, count do
+            total = total + WeightFor(i)
+        end
+        if total <= 0 then
+            -- All weights are zero: degrade to uniform choice so we still play.
+            local index = math.random(count)
+            FlatulenceDB.lastIndex = index
+            return SOUND_FILES[index], index
+        end
+        last = nil -- last is now allowed, since it's the only weighted option
+    end
+
+    -- math.random() returns [0,1); scale into (0, total].
+    local roll = math.random() * total
     local index
-    repeat
-        index = math.random(count)
-    until index ~= FlatulenceDB.lastIndex
+    for i = 1, count do
+        if i ~= last then
+            roll = roll - WeightFor(i)
+            if roll <= 0 then
+                index = i
+                break
+            end
+        end
+    end
+    -- Floating-point guard: if rounding left us short, take the last candidate.
+    if not index then
+        for i = count, 1, -1 do
+            if i ~= last and WeightFor(i) > 0 then index = i break end
+        end
+    end
 
     FlatulenceDB.lastIndex = index
     return SOUND_FILES[index], index
@@ -335,31 +427,25 @@ local function ReactToFart(sourceName, soundIndex)
     end)
 end
 
--- Pick a random /prrt action emote, avoiding an immediate repeat.
-local function PickFartAction()
-    local count = #FART_ACTION_EMOTES
-    if count == 0 then return nil end
-    if count == 1 then return FART_ACTION_EMOTES[1] end
-
-    local index
-    repeat
-        index = math.random(count)
-    until index ~= FlatulenceDB.lastActionIndex
-    FlatulenceDB.lastActionIndex = index
-    return FART_ACTION_EMOTES[index]
-end
-
 -- The addon's OWN fart action, triggered by /prrt. Fully independent of
--- Blizzard's /fart emote: plays a random sound, tells groupmates so they hear
--- it and react, and posts a random custom emote line instead of the stock one.
+-- Blizzard's /fart emote: plays a random sound and posts THAT sound's dedicated
+-- emote line (see FART_ACTION_EMOTES). The emote line doubles as a proximity
+-- signal -- any Flatulence user in emote range decodes it via
+-- OnTextEmote/CHAT_MSG_TEXT_EMOTE and plays the same sound, no group required.
+--
+-- We still broadcast on the group addon channel too: groupmates who may be out
+-- of emote range (e.g. across a raid instance) still hear it that way. Nearby
+-- listeners are de-duplicated in OnTextEmote so they don't play twice.
 local function DoFart()
     if not FlatulenceDB.enabled then return end
     if InCombat() then return end
 
     local index = PlayFart()
+    if not index then return end
+
     BroadcastFart(index)
 
-    local action = PickFartAction()
+    local action = FART_ACTION_EMOTES[index]
     if action then
         SendTextEmote(action)
     end
@@ -383,6 +469,26 @@ local function OnDoEmote(token)
     end
 end
 
+-- Return true if we've already handled this exact fart (same sender + sound)
+-- within DEDUP_WINDOW seconds, and record it otherwise. Used to collapse the
+-- group-message + text-emote double delivery for grouped, in-range players.
+local function AlreadyHandled(shortSender, soundIndex)
+    if not shortSender then return false end
+    local now = GetTime and GetTime() or 0
+    local prev = lastHandled[shortSender]
+    if prev and prev.index == soundIndex and (now - prev.at) < DEDUP_WINDOW then
+        return true
+    end
+    lastHandled[shortSender] = { index = soundIndex, at = now }
+    return false
+end
+
+-- Reduce a possibly "Name-Realm" sender to just the character name.
+local function ShortName(sender)
+    if type(sender) ~= "string" then return sender end
+    return sender:match("^[^-]+") or sender
+end
+
 -- Handle an incoming addon message from another Flatulence user.
 -- Payload is "FART" (legacy) or "FART:<index>".
 local function OnAddonMessage(prefix, text, channel, sender)
@@ -394,12 +500,50 @@ local function OnAddonMessage(prefix, text, channel, sender)
     local soundIndex = tonumber(indexStr) -- nil if not provided -> random
 
     -- Ignore our own broadcast. sender may be "Name" or "Name-Realm".
-    if sender then
-        local shortSender = sender:match("^[^-]+") or sender
-        if sender == playerName or shortSender == playerName then
-            return
+    local shortSender = ShortName(sender)
+    if sender == playerName or shortSender == playerName then
+        return
+    end
+
+    -- Drop if we already reacted to this same fart via the text emote.
+    if AlreadyHandled(shortSender, soundIndex) then return end
+
+    ReactToFart(sender, soundIndex)
+end
+
+-- Handle a text emote we can SEE (CHAT_MSG_TEXT_EMOTE). This is the proximity
+-- path: the game delivers this event for any /prrt emote posted by a player in
+-- emote range, whether or not they are grouped with us. We match the emote text
+-- against our known per-sound lines; a hit means a Flatulence user nearby just
+-- farted, and the matched index tells us exactly which sound to play.
+--
+-- Args: (message, playerName, ...) -- message is the raw emote line, e.g.
+-- "Bob unleashes a thunderous rip that echoes off the walls." The formatting
+-- varies, so we test whether the normalized message CONTAINS one of our lines.
+local function OnTextEmote(message, sender)
+    if type(message) ~= "string" then return end
+
+    local normalized = NormalizeEmote(message)
+    if not normalized then return end
+
+    -- Find which (if any) of our signature lines this emote contains.
+    local soundIndex
+    for line, index in pairs(FART_ACTION_BY_TEXT) do
+        if normalized:find(line, 1, true) then
+            soundIndex = index
+            break
         end
     end
+    if not soundIndex then return end
+
+    -- Ignore our own emote. CHAT_MSG_TEXT_EMOTE's sender arg is the player name.
+    local shortSender = ShortName(sender)
+    if not sender or sender == playerName or shortSender == playerName then
+        return
+    end
+
+    -- Drop if we already reacted to this same fart via the group addon message.
+    if AlreadyHandled(shortSender, soundIndex) then return end
 
     ReactToFart(sender, soundIndex)
 end
@@ -473,6 +617,7 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("CHAT_MSG_ADDON")
+frame:RegisterEvent("CHAT_MSG_TEXT_EMOTE")
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         local loadedAddon = ...
@@ -520,5 +665,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "CHAT_MSG_ADDON" then
         OnAddonMessage(...)
+
+    elseif event == "CHAT_MSG_TEXT_EMOTE" then
+        -- Args: text, playerName, languageName, ... -- we need the first two.
+        OnTextEmote(...)
     end
 end)
