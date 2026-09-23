@@ -206,6 +206,14 @@ local function Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff88ff88Flatulence|r: " .. tostring(msg))
 end
 
+-- True while the player is in combat. The addon must stay silent in combat:
+-- SendChatMessage/DoEmote are throttled or blocked by Blizzard during combat,
+-- and firing sounds/emotes then is both noisy and error-prone. InCombatLockdown
+-- exists on every supported flavor; guard it just in case.
+local function InCombat()
+    return InCombatLockdown and InCombatLockdown() or false
+end
+
 -- Pick a random sound, avoiding an immediate repeat when we have >1 sound.
 local function PickSound()
     local count = #SOUND_FILES
@@ -291,6 +299,10 @@ end
 -- react with an emote, respecting settings, a chance roll, and a cooldown that
 -- prevents spam/feedback loops.
 local function ReactToFart(sourceName, soundIndex)
+    -- Never react in combat: reactions post text emotes / stock emotes, which
+    -- Blizzard restricts during combat, and combat is no time for farting.
+    if InCombat() then return end
+
     -- Play the sound we "heard". This is independent of your own /fart being
     -- enabled -- it's governed by hearOthers so you can hear farts even if you
     -- keep your own silenced. A forced index that doesn't exist in our list
@@ -313,6 +325,8 @@ local function ReactToFart(sourceName, soundIndex)
     lastReactAt = now
     -- Small random delay so a room full of people doesn't react in unison.
     After(0.3 + math.random() * 1.7, function()
+        -- Re-check: combat may have started during the delay.
+        if InCombat() then return end
         if USE_STOCK_EMOTES then
             DoEmote(reaction)          -- built-in emote token, e.g. "COUGH"
         else
@@ -340,6 +354,7 @@ end
 -- it and react, and posts a random custom emote line instead of the stock one.
 local function DoFart()
     if not FlatulenceDB.enabled then return end
+    if InCombat() then return end
 
     local index = PlayFart()
     BroadcastFart(index)
@@ -362,6 +377,7 @@ end
 local function OnDoEmote(token)
     if type(token) == "string" and token:upper() == FART_EMOTE_TOKEN then
         if not FlatulenceDB.enabled then return end
+        if InCombat() then return end
         local index = PlayFart()
         BroadcastFart(index)
     end
@@ -404,7 +420,11 @@ local function HandleSlash(msg)
         FlatulenceDB.enabled = true
         Print("sounds enabled.")
     elseif cmd == "test" then
-        PlayFart()
+        if InCombat() then
+            Print("not in combat, please.")
+        else
+            PlayFart()
+        end
     elseif cmd == "toggle" then
         FlatulenceDB.enabled = not FlatulenceDB.enabled
         Print(FlatulenceDB.enabled and "sounds enabled." or "sounds disabled.")
