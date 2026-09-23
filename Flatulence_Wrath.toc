@@ -1,13 +1,13 @@
 ## Interface: 30405
 ## Title: Flatulence
 ## Notes: Plays a random fart sound whenever you use the /fart emote.
-## Author: You
+## Author: dekmaskin
 ## Version: @project-version@
 ## License: MIT
 ## SavedVariables: FlatulenceDB
 ## IconTexture: Interface\ICONS\INV_Misc_Food_15
 ## X-Category: Sound & Vibration
-## X-Website: https://github.com/YOUR_USERNAME/Flatulence
+## X-Website: https://github.com/dekmaskin/Flatulence
 ## X-Curse-Project-ID: 0
 ## X-Wago-ID: 0
 ## X-WoWI-ID: 0
