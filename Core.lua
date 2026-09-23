@@ -1,6 +1,7 @@
 --[[
     Flatulence
-    Plays a random fart sound whenever you use the /fart emote.
+    Plays a random fart sound when you use the addon's own /prrt (or /brap)
+    emote. Blizzard's built-in /fart is left untouched.
 
     Design goals:
       * One shared Core.lua for every game version (retail, MoP, Cata, Wrath,
@@ -41,9 +42,6 @@ local SOUND_WEIGHTS = {
 -- Default weight given to any sound not listed in SOUND_WEIGHTS above. With 8
 -- sounds at weight 10 and fart8 at weight 1, fart8 lands ~1 in 81 farts (~1.2%).
 local DEFAULT_SOUND_WEIGHT = 10
-
--- The emote token WoW uses internally for /fart. This is stable across versions.
-local FART_EMOTE_TOKEN = "FART"
 
 -- Addon comm prefix. Other players running Flatulence listen for this so they
 -- can react. Max 16 characters. Keep this identical across all your installs.
@@ -395,7 +393,7 @@ local function ReactToFart(sourceName, soundIndex)
     -- Blizzard restricts during combat, and combat is no time for farting.
     if InCombat() then return end
 
-    -- Play the sound we "heard". This is independent of your own /fart being
+    -- Play the sound we "heard". This is independent of your own /prrt being
     -- enabled -- it's governed by hearOthers so you can hear farts even if you
     -- keep your own silenced. A forced index that doesn't exist in our list
     -- (mismatched SOUND_FILES) simply falls back to a random sound.
@@ -454,20 +452,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Emote detection
 -- ---------------------------------------------------------------------------
-
--- DoEmote(token) is the function the client calls for every emote, including
--- when the player types /fart. hooksecurefunc lets us react without tainting
--- or overriding Blizzard code, and it works identically on all versions.
--- (This handles the built-in /fart; the addon's own /prrt is handled by
---  DoFart above and does NOT go through here.)
-local function OnDoEmote(token)
-    if type(token) == "string" and token:upper() == FART_EMOTE_TOKEN then
-        if not FlatulenceDB.enabled then return end
-        if InCombat() then return end
-        local index = PlayFart()
-        BroadcastFart(index)
-    end
-end
 
 -- Return true if we've already handled this exact fart (same sender + sound)
 -- within DEDUP_WINDOW seconds, and record it otherwise. Used to collapse the
@@ -549,7 +533,7 @@ local function OnTextEmote(message, sender)
 end
 
 -- ---------------------------------------------------------------------------
--- Slash commands: /fart plays on demand, /flatulence toggles settings
+-- Slash commands: /prrt plays on demand, /flatulence toggles settings
 -- ---------------------------------------------------------------------------
 
 local function HandleSlash(msg)
@@ -636,14 +620,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
             math.randomseed(GetTime and math.floor(GetTime() * 1000) or time())
         end
 
-        -- Hook the emote system.
-        hooksecurefunc("DoEmote", OnDoEmote)
-
         -- Register our addon comm prefix so reactions can be received.
         RegisterCommPrefix(COMM_PREFIX)
 
-        -- Register the /flatulence config command. We deliberately do NOT
-        -- register /fart ourselves so we never fight Blizzard's real emote.
+        -- Register the /flatulence config command. We deliberately leave
+        -- Blizzard's built-in /fart emote completely alone -- the addon's own
+        -- sounds are triggered only by /prrt (and /brap).
         SLASH_FLATULENCE1 = "/flatulence"
         SLASH_FLATULENCE2 = "/flat"
         SlashCmdList["FLATULENCE"] = HandleSlash
@@ -656,7 +638,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
         self:UnregisterEvent("ADDON_LOADED")
         After(0, function()
-            Print("loaded. Use /fart or /prrt and enjoy. Config with /flatulence.")
+            Print("loaded. Use /prrt (or /brap) and enjoy. Config with /flatulence.")
         end)
 
     elseif event == "PLAYER_LOGIN" then

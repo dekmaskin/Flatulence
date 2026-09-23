@@ -1,6 +1,6 @@
 ## Interface: 50504
 ## Title: Flatulence
-## Notes: Plays a random fart sound whenever you use the /fart emote.
+## Notes: Plays a random fart sound when you use the /prrt (or /brap) emote.
 ## Author: dekmaskin
 ## Version: @project-version@
 ## License: MIT
@@ -8,7 +8,7 @@
 ## IconTexture: Interface\ICONS\INV_Misc_Food_15
 ## X-Category: Sound & Vibration
 ## X-Website: https://github.com/dekmaskin/Flatulence
-## X-Curse-Project-ID: 0
+## X-Curse-Project-ID: 1708610
 ## X-Wago-ID: 0
 ## X-WoWI-ID: 0
 
