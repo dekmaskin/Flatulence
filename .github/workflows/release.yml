@@ -1,0 +1,35 @@
+name: Package and release
+
+# Build a release zip whenever you push a version tag like "v1.0.0", and
+# upload it to any distribution site whose API token is configured as a
+# repository secret. Missing tokens are simply skipped by the packager.
+on:
+  push:
+    tags:
+      - "v*"
+  # Allow manual runs from the Actions tab for testing (builds a zip artifact,
+  # does not publish unless a tag triggered it).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and release
+        uses: BigWigsMods/packager@master
+        env:
+          # Add these under Settings -> Secrets and variables -> Actions.
+          # Any that are absent are skipped, so you can start with none of them
+          # (the workflow will still build and attach a zip to the GitHub release).
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}       # CurseForge
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }} # Wago
+          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }} # WoWInterface
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}     # provided automatically

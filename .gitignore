@@ -1,0 +1,16 @@
+# Build output from the BigWigs packager
+.release/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Local test audio you don't intend to redistribute.
+# Remove or adjust these lines if your real, licensed sounds live here and you
+# WANT them committed and shipped.
+# Sounds/*.mp3
+# Sounds/*.ogg
