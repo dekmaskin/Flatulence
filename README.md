@@ -6,7 +6,7 @@ Mists of Pandaria Classic, Cataclysm, Wrath, and Classic Era.
 
 ## What it does
 
-- Adds its own **`/prrt`** emote (alias `/brap`) that plays a sound and posts a
+- Adds its own **`/prrt`** emote (aliases `/brap` and `/toot`) that plays a sound and posts a
   custom fart line of its own — no stock Blizzard emote text. Each sound has its
   own signature line, and that line doubles as a hidden signal so **anyone
   nearby with the addon plays the exact same sound, no group required.**
@@ -22,8 +22,8 @@ Mists of Pandaria Classic, Cataclysm, Wrath, and Classic Era.
 
 ## How `/prrt` works
 
-`/prrt` (alias `/brap`) is the addon's own emote, fully independent of
-Blizzard's. It plays a random sound and posts *that sound's* signature line
+`/prrt` (aliases `/brap` and `/toot`) is the addon's own emote, fully
+independent of Blizzard's. It plays a random sound and posts *that sound's* signature line
 (e.g. "*YourName* unfurls a long, steady, workmanlike rumble.") as a normal
 text emote. The `/prrt` action lines live in the `FART_ACTION_EMOTES` table at
 the top of `Core.lua`.
@@ -147,7 +147,7 @@ Then:
 
 | Command | Effect |
 | --- | --- |
-| `/prrt` (alias `/brap`) | The addon's own emote — random sound + that sound's signature line; nearby addon users (grouped or not) play the same sound and react. |
+| `/prrt` (aliases `/brap`, `/toot`) | The addon's own emote — random sound + that sound's signature line; nearby addon users (grouped or not) play the same sound and react. |
 | `/flatulence on` / `off` / `toggle` | Enable or disable your own sounds. |
 | `/flatulence test` | Play a random sound now. |
 | `/flatulence react on` / `off` | Enable or disable reacting to others' farts. |
@@ -196,7 +196,7 @@ The design keeps everything version-specific in two places:
 
 ## Notes
 
-- The addon adds its own `/prrt` (and `/brap`) command and **does not touch
+- The addon adds its own `/prrt` (and `/brap`, `/toot`) command and **does not touch
   Blizzard's `/fart`**. There is no `DoEmote` hook — `/fart` behaves exactly as
   it does without the addon.
 - `/prrt` reactions are proximity-based: they ride the `CHAT_MSG_TEXT_EMOTE`

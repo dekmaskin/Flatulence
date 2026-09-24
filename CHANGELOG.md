@@ -6,6 +6,11 @@ All notable changes to Flatulence are documented here.
 
 - Nothing yet.
 
+## [1.0.1]
+
+- Added `/toot` as an additional alias for the `/prrt` emote (alongside `/brap`).
+- Fixed the Wago project ID in the TOC files.
+
 ## [1.0.0]
 
 Initial release.

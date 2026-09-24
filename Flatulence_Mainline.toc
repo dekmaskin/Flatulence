@@ -9,8 +9,7 @@
 ## X-Category: Sound & Vibration
 ## X-Website: https://github.com/dekmaskin/Flatulence
 ## X-Curse-Project-ID: 1708610
-## X-Wago-ID: 0
-## X-WoWI-ID: 0
+## X-Wago-ID: mKOav1Nx
 
 # Shared files. Every version loads the exact same code; only the
 # Interface number above differs between the per-flavor TOC files.

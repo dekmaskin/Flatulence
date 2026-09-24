@@ -1,7 +1,7 @@
 --[[
     Flatulence
-    Plays a random fart sound when you use the addon's own /prrt (or /brap)
-    emote. Blizzard's built-in /fart is left untouched.
+    Plays a random fart sound when you use the addon's own /prrt (aliases
+    /brap and /toot) emote. Blizzard's built-in /fart is left untouched.
 
     Design goals:
       * One shared Core.lua for every game version (retail, MoP, Cata, Wrath,
@@ -625,15 +625,17 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
         -- Register the /flatulence config command. We deliberately leave
         -- Blizzard's built-in /fart emote completely alone -- the addon's own
-        -- sounds are triggered only by /prrt (and /brap).
+        -- sounds are triggered only by /prrt (and /brap, /toot).
         SLASH_FLATULENCE1 = "/flatulence"
         SLASH_FLATULENCE2 = "/flat"
         SlashCmdList["FLATULENCE"] = HandleSlash
 
-        -- Register the addon's own independent fart emote: /prrt (and /brap).
-        -- This does NOT touch Blizzard's /fart -- it runs DoFart directly.
+        -- Register the addon's own independent fart emote: /prrt (aliases
+        -- /brap and /toot). This does NOT touch Blizzard's /fart -- it runs
+        -- DoFart directly.
         SLASH_FLATULENCEPRRT1 = "/prrt"
         SLASH_FLATULENCEPRRT2 = "/brap"
+        SLASH_FLATULENCEPRRT3 = "/toot"
         SlashCmdList["FLATULENCEPRRT"] = DoFart
 
         self:UnregisterEvent("ADDON_LOADED")
