@@ -601,6 +601,13 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("CHAT_MSG_ADDON")
+-- Custom text emotes sent via SendChatMessage(text, "EMOTE") -- which is what
+-- /prrt produces -- arrive at observers as CHAT_MSG_EMOTE, NOT
+-- CHAT_MSG_TEXT_EMOTE. CHAT_MSG_TEXT_EMOTE only fires for Blizzard's built-in
+-- token emotes (/cough, /laugh, ...). We register BOTH so the proximity path
+-- works whether the signal is a custom sentence (the /prrt default) or, if
+-- USE_STOCK_EMOTES is ever used by a sender, a built-in token.
+frame:RegisterEvent("CHAT_MSG_EMOTE")
 frame:RegisterEvent("CHAT_MSG_TEXT_EMOTE")
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -640,7 +647,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
         self:UnregisterEvent("ADDON_LOADED")
         After(0, function()
-            Print("loaded. Use /prrt (or /brap) and enjoy. Config with /flatulence.")
+            Print("loaded. Use /prrt, /brap or /toot and enjoy. Config with /flatulence.")
         end)
 
     elseif event == "PLAYER_LOGIN" then
@@ -650,8 +657,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_ADDON" then
         OnAddonMessage(...)
 
-    elseif event == "CHAT_MSG_TEXT_EMOTE" then
-        -- Args: text, playerName, languageName, ... -- we need the first two.
+    elseif event == "CHAT_MSG_EMOTE" or event == "CHAT_MSG_TEXT_EMOTE" then
+        -- Both carry (message, senderName, ...) with the same arg order; we
+        -- only need the first two. CHAT_MSG_EMOTE is the one that actually
+        -- fires for /prrt's custom sentence emote in emote range.
         OnTextEmote(...)
     end
 end)

@@ -6,6 +6,14 @@ All notable changes to Flatulence are documented here.
 
 - Nothing yet.
 
+## [1.0.2]
+
+- Fixed reactions to nearby players who are **not** in your group or raid. The
+  addon listened for the wrong chat event (`CHAT_MSG_TEXT_EMOTE`), which only
+  fires for Blizzard's built-in emotes. Custom `/prrt` emotes arrive as
+  `CHAT_MSG_EMOTE`, so proximity reactions now work for anyone in emote range,
+  no group required.
+
 ## [1.0.1]
 
 - Added `/toot` as an additional alias for the `/prrt` emote (alongside `/brap`).
