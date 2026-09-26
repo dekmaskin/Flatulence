@@ -473,6 +473,38 @@ local function ShortName(sender)
     return sender:match("^[^-]+") or sender
 end
 
+-- True if the given chat sender is US. This must be robust: the reported bug
+-- was the character reacting to its OWN farts, which happens when a plain
+-- string compare against a cached name misses. Reasons it can miss:
+--   * playerName is cached at PLAYER_LOGIN; if an emote/comm is somehow
+--     processed before that, playerName is nil and the guard is skipped.
+--   * The sender may arrive as "Name-Realm" (connected realms) while
+--     UnitName("player") is just "Name", or vice versa.
+--   * Realm casing/spacing differences between the two sources.
+-- We compare the realm-stripped names case-insensitively, and fall back to a
+-- fresh UnitName lookup so we never depend solely on the cached value.
+local function IsSelf(sender)
+    if type(sender) ~= "string" or sender == "" then
+        -- No usable sender name: treat as self so we never react to a fart we
+        -- can't attribute to someone else (prevents self-reaction leaks).
+        return true
+    end
+
+    local incoming = ShortName(sender):lower()
+
+    if playerName and incoming == ShortName(playerName):lower() then
+        return true
+    end
+
+    -- Fresh lookup so a missing/stale cached playerName can't defeat the guard.
+    local liveName = UnitName and UnitName("player")
+    if liveName and incoming == ShortName(liveName):lower() then
+        return true
+    end
+
+    return false
+end
+
 -- Handle an incoming addon message from another Flatulence user.
 -- Payload is "FART" (legacy) or "FART:<index>".
 local function OnAddonMessage(prefix, text, channel, sender)
@@ -484,10 +516,8 @@ local function OnAddonMessage(prefix, text, channel, sender)
     local soundIndex = tonumber(indexStr) -- nil if not provided -> random
 
     -- Ignore our own broadcast. sender may be "Name" or "Name-Realm".
+    if IsSelf(sender) then return end
     local shortSender = ShortName(sender)
-    if sender == playerName or shortSender == playerName then
-        return
-    end
 
     -- Drop if we already reacted to this same fart via the text emote.
     if AlreadyHandled(shortSender, soundIndex) then return end
@@ -520,11 +550,12 @@ local function OnTextEmote(message, sender)
     end
     if not soundIndex then return end
 
-    -- Ignore our own emote. CHAT_MSG_TEXT_EMOTE's sender arg is the player name.
+    -- Ignore our own emote. CHAT_MSG_EMOTE's sender arg is the player name.
+    -- This is the guard that fixes the reported bug: /prrt sends a custom text
+    -- emote via SendChatMessage, which echoes back to our OWN client as a
+    -- CHAT_MSG_EMOTE. Without a solid self-check we'd react to our own fart.
+    if IsSelf(sender) then return end
     local shortSender = ShortName(sender)
-    if not sender or sender == playerName or shortSender == playerName then
-        return
-    end
 
     -- Drop if we already reacted to this same fart via the group addon message.
     if AlreadyHandled(shortSender, soundIndex) then return end
