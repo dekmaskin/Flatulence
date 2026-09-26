@@ -6,6 +6,24 @@ All notable changes to Flatulence are documented here.
 
 - Nothing yet.
 
+## [1.1.0]
+
+- **Personal `/prrt` cooldown.** You can now only fart once every 60 seconds;
+  farting again too soon prints how long to wait and does nothing else.
+  `/flatulence test` is exempt since it doesn't broadcast.
+- **Two reaction categories.** Each reacting player now picks one of two kinds
+  of reaction per fart: a fast **hearing** reaction to the noise, or a
+  **smell** reaction delayed 4-10 seconds while the cloud drifts over. Each
+  category has its own tuned emote list (`SOUND_REACTIONS` / `SMELL_REACTIONS`).
+- **Crowd throttle.** In a busy area, clients now back off once they've seen a
+  cap's worth of reactions to a fart, so a single `/prrt` draws roughly 1-4
+  reactions total instead of a wall of spam. Tune or disable with
+  `/flatulence crowd <1-100>` / `off` (default cap 4).
+- **Spoken `/say` retorts.** A reaction now has a small chance (default 15%) to
+  also blurt an unhinged, WoW-flavored spoken line matching its category --
+  from utter disgust to suspiciously into it. Tune with
+  `/flatulence say <0-100>` / `off`.
+
 ## [1.0.4]
 
 - Fixed the addon reacting to your **own** `/prrt` farts. The self-check relied
