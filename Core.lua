@@ -177,6 +177,7 @@ local DEFAULTS = {
 
 -- Local runtime state (not saved).
 local playerName            -- our own name, used to ignore our own broadcasts
+local playerGUID            -- our own GUID; the reliable self-check (see IsSelf)
 local lastReactAt = 0       -- GetTime() of our last reaction, for cooldown
 local REACT_COOLDOWN = 8    -- seconds; prevents emote spam / feedback loops
 
@@ -473,20 +474,35 @@ local function ShortName(sender)
     return sender:match("^[^-]+") or sender
 end
 
--- True if the given chat sender is US. This must be robust: the reported bug
--- was the character reacting to its OWN farts, which happens when a plain
--- string compare against a cached name misses. Reasons it can miss:
---   * playerName is cached at PLAYER_LOGIN; if an emote/comm is somehow
---     processed before that, playerName is nil and the guard is skipped.
---   * The sender may arrive as "Name-Realm" (connected realms) while
---     UnitName("player") is just "Name", or vice versa.
---   * Realm casing/spacing differences between the two sources.
--- We compare the realm-stripped names case-insensitively, and fall back to a
--- fresh UnitName lookup so we never depend solely on the cached value.
-local function IsSelf(sender)
+-- True if the given chat/comm event came from US. This is the guard for the
+-- reported bug: the character reacting to its OWN farts. The previous version
+-- compared only the sender NAME, which is fragile -- on connected realms the
+-- self-echo of your own emote can arrive as "Name-Realm" (or with realm
+-- casing/spacing that differs from UnitName), so a name compare can miss and
+-- we end up reacting to ourselves.
+--
+-- The reliable signal is the GUID: CHAT_MSG_EMOTE delivers the sender's GUID,
+-- and it always equals UnitGUID("player") for our own emote regardless of realm
+-- formatting. We check the GUID first and only fall back to the name comparison
+-- when no GUID is available (e.g. CHAT_MSG_ADDON, which carries no GUID).
+local function IsSelf(sender, guid)
+    -- Primary, formatting-proof check: GUID match.
+    if type(guid) == "string" and guid ~= "" then
+        local mine = playerGUID or (UnitGUID and UnitGUID("player"))
+        if mine and guid == mine then
+            return true
+        end
+        -- We have a GUID and it's NOT ours: this is definitively someone else,
+        -- so don't fall through to the weaker name heuristic (which could
+        -- mis-flag a same-named player on another realm as self).
+        return false
+    end
+
+    -- No GUID available (very old clients / addon-comm quirks): fall back to
+    -- the realm-stripped, case-insensitive name comparison.
     if type(sender) ~= "string" or sender == "" then
-        -- No usable sender name: treat as self so we never react to a fart we
-        -- can't attribute to someone else (prevents self-reaction leaks).
+        -- No usable sender name either: treat as self so we never react to a
+        -- fart we can't attribute to someone else (prevents self-reaction).
         return true
     end
 
@@ -515,8 +531,10 @@ local function OnAddonMessage(prefix, text, channel, sender)
     if command ~= "FART" then return end
     local soundIndex = tonumber(indexStr) -- nil if not provided -> random
 
-    -- Ignore our own broadcast. sender may be "Name" or "Name-Realm".
-    if IsSelf(sender) then return end
+    -- Ignore our own broadcast. CHAT_MSG_ADDON carries no GUID, so IsSelf
+    -- uses the realm-stripped name fallback here (sender may be "Name" or
+    -- "Name-Realm").
+    if IsSelf(sender, nil) then return end
     local shortSender = ShortName(sender)
 
     -- Drop if we already reacted to this same fart via the text emote.
@@ -534,7 +552,7 @@ end
 -- Args: (message, playerName, ...) -- message is the raw emote line, e.g.
 -- "Bob unleashes a thunderous rip that echoes off the walls." The formatting
 -- varies, so we test whether the normalized message CONTAINS one of our lines.
-local function OnTextEmote(message, sender)
+local function OnTextEmote(message, sender, ...)
     if type(message) ~= "string" then return end
 
     local normalized = NormalizeEmote(message)
@@ -550,11 +568,17 @@ local function OnTextEmote(message, sender)
     end
     if not soundIndex then return end
 
-    -- Ignore our own emote. CHAT_MSG_EMOTE's sender arg is the player name.
-    -- This is the guard that fixes the reported bug: /prrt sends a custom text
-    -- emote via SendChatMessage, which echoes back to our OWN client as a
-    -- CHAT_MSG_EMOTE. Without a solid self-check we'd react to our own fart.
-    if IsSelf(sender) then return end
+    -- Ignore our own emote. This is the guard that fixes the reported bug:
+    -- /prrt sends a custom text emote via SendChatMessage, which echoes back to
+    -- our OWN client as a CHAT_MSG_EMOTE. We identify self by GUID (reliable)
+    -- with a name fallback. The full CHAT_MSG_EMOTE arg list is:
+    --   1 text, 2 playerName, 3 languageName, 4 channelName, 5 playerName2,
+    --   6 specialFlags, 7 zoneChannelID, 8 channelIndex, 9 channelBaseName,
+    --   10 languageID, 11 lineID, 12 guid, ...
+    -- Here message=arg1 and sender=arg2, so this inner "..." begins at arg3.
+    -- The GUID (overall arg12) is therefore select(10, ...).
+    local guid = select(10, ...)
+    if IsSelf(sender, guid) then return end
     local shortSender = ShortName(sender)
 
     -- Drop if we already reacted to this same fart via the group addon message.
@@ -682,8 +706,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         end)
 
     elseif event == "PLAYER_LOGIN" then
-        -- Cache our own name so we can ignore our own broadcasts.
+        -- Cache our own name and GUID so we can ignore our own farts. The GUID
+        -- is the reliable self-check that fixes reacting to our own emote.
         playerName = UnitName("player")
+        playerGUID = UnitGUID and UnitGUID("player")
 
     elseif event == "CHAT_MSG_ADDON" then
         OnAddonMessage(...)

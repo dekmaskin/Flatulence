@@ -6,6 +6,15 @@ All notable changes to Flatulence are documented here.
 
 - Nothing yet.
 
+## [1.0.4]
+
+- Fixed the addon reacting to your **own** `/prrt` farts. The self-check relied
+  on matching the sender's name, which could miss on connected realms (the
+  self-echo arrives as `Name-Realm` while `UnitName` is bare `Name`). It now
+  identifies self by GUID (`UnitGUID("player")`), which is immune to realm
+  formatting, and only falls back to the name comparison when no GUID is
+  available.
+
 ## [1.0.2]
 
 - Fixed reactions to nearby players who are **not** in your group or raid. The
