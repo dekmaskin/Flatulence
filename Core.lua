@@ -154,7 +154,7 @@ local SOUND_SAY_LINES = {
     "Report to the guards, that was a sonic weapon of mass destruction.",
     "Great, now the whole raid's DBM is going off for YOUR colon.",
     -- ---- Amused ----
-    "Ten out of ten. Ragnaros himself couldn't blow that hot.",
+    "Ten out of ten. Ragnaros himself couldn't roar that loud.",
     "Deadmines has quieter cannons, friend.",
     "That had more bass than a tauren war drum.",
     "The bards of the Alliance will sing of that note for an age.",
@@ -195,6 +195,17 @@ local SMELL_SAY_LINES = {
     "Ahh, smells like victory. And regret. Mostly regret.",
     "That has a bouquet. Notes of Duskwood, hint of tauren.",
     "I'd give that a Realm First achievement, truly.",
+    -- ---- Concern for the source's... smallclothes ----
+    "You'd best check your breeches, friend. That one smelled wet.",
+    "I think you'll want to inspect your pantaloons after that.",
+    "That was a follow-through if I ever smelled one -- check your smallclothes.",
+    "Someone escort them to a tailor. Immediately.",
+    "That's a repair bill AND a laundry bill, by the smell of it.",
+    "You may have just soiled your best raiding pantaloons.",
+    "Better waddle to the nearest inn and check the damage.",
+    "I'd have the mages Portal you home before that reaches your boots.",
+    "Careful sitting down -- I fear the breeches did not survive.",
+    "That's not a fart, that's an equipment durability warning.",
     -- ---- Very into it ----
     "...why do I kind of like it? Is this a curse? Do it again.",
     "Ohh, that's the good stuff. Bottle it, I'll pay in gold.",
