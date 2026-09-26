@@ -59,12 +59,28 @@ laughing, cheering, and glaring. Any Flatulence user within emote range reacts
 (a stranger in a city included), and groupmates out of range react via the addon
 channel.
 
-The reactions are 40+ hand-written custom emotes ranging from **extreme
-disgust** ("gags violently and looks for the nearest exit.") through amusement
-and delight, all the way to a few that are **suspiciously into it** ("fans
-themselves and whispers, 'do that again.'"). They're
-posted as normal `/emote` text, so once triggered they're visible to *everyone*
-around the reacting player, not just the group.
+Each reacting player picks **one of two kinds** of reaction per fart:
+
+- **Hearing** — a fast reaction to the *noise*, fired within a couple of
+  seconds because you hear a fart the instant it happens (e.g. "snorts, trying
+  and failing not to laugh."). These come from the `SOUND_REACTIONS` list.
+- **Smell** — a *delayed* reaction to the *stench*, fired several seconds later
+  (4–10s) because the cloud takes a moment to drift over and hit you (e.g.
+  "gags violently and looks for the nearest exit."). These come from the
+  `SMELL_REACTIONS` list, which runs from **extreme disgust** through amusement
+  and delight all the way to a few that are **suspiciously into it** ("fans
+  themselves and whispers, 'do that again.'").
+
+Reactions are posted as normal `/emote` text, so once triggered they're visible
+to *everyone* around the reacting player, not just the group.
+
+On top of the emote, there's a **small chance the character also speaks a
+retort out loud** via `/say` — a spoken line matching the category it picked
+("Was that you or a siege engine?" for a sound reaction, "By the Light, what did
+you eat?!" for a smell one). This fires alongside the emote on the same delay.
+The chance defaults to 15% and is tuned with `/flatulence say <0-100>` (or
+`off`). Spoken retorts only apply to the custom-sentence reactions, not stock
+mode.
 
 Details and limitations:
 
@@ -78,21 +94,39 @@ Details and limitations:
   `FART_ACTION_EMOTES` lines — in the same order (e.g. the same addon install).
   If they differ, the listener falls back to a random sound rather than
   erroring. Toggle this with `/flatulence hear off`.
+- **Crowd throttle.** In a busy area — a capital city full of Flatulence users —
+  you don't want 30 people all reacting to one fart. Each client watches for
+  reactions it can recognize and, once it has seen a cap's worth for the current
+  fart, holds its own back. The cap is rolled per fart in `1..crowdCap`
+  (default max **4**), so any single fart draws roughly **1–4** reactions total,
+  no matter how big the crowd. Small groups are unaffected — everyone reacts.
+  Because clients act independently with no coordinator, this is approximate
+  (it may occasionally land a little over the cap), and it can only recognize
+  reactions from other Flatulence users. Tune or disable it with
+  `/flatulence crowd <n>` / `off`.
 - A per-client cooldown and an optional chance roll keep reactions from turning
   into spam or feedback loops. (The cooldown gates the emote reaction; the
   heard sound plays each time.)
 
 ### Customizing the reactions
 
-The reaction text lives in the `RESPONSE_EMOTES` table at the top of `Core.lua`,
-loosely ordered from disgust to delight (selection is random; the ordering is
-just for readability). Each entry continues the sentence
-"`<YourName> ...`", so write them accordingly, e.g.
-`"wrinkles their nose and takes a careful step away."`.
+The reaction text lives in **two** tables at the top of `Core.lua`:
+`SOUND_REACTIONS` (hearing) and `SMELL_REACTIONS` (smell). Each is loosely
+ordered for readability (selection is random). Every entry continues the
+sentence "`<YourName> ...`", so write them accordingly, e.g.
+`"wrinkles their nose and takes a careful step away."`. The smell reactions'
+delay range is set by `SMELL_DELAY_MIN`/`SMELL_DELAY_MAX`, and the hearing
+stagger by `SOUND_DELAY_MIN`/`SOUND_DELAY_MAX`.
+
+The occasional spoken `/say` retorts live in `SOUND_SAY_LINES` and
+`SMELL_SAY_LINES`. Unlike the emote lists, these are **first-person** lines the
+character says out loud, so write them as full spoken sentences (e.g.
+`"By the Light, what did you eat?!"`).
 
 Prefer the game's built-in stock emotes (`/cough`, `/laugh`, etc.) instead of
 custom sentences? Set `USE_STOCK_EMOTES = true` near the top of `Core.lua`; it
-will then react using the tokens in `STOCK_EMOTE_TOKENS`.
+will then react using the tokens in `STOCK_EMOTE_TOKENS` (the hearing/smell
+split applies only to the custom-sentence reactions).
 
 ## Install
 
@@ -153,7 +187,13 @@ Then:
 | `/flatulence react on` / `off` | Enable or disable reacting to others' farts. |
 | `/flatulence react <0-100>` | Set the % chance you react (e.g. `react 50`). |
 | `/flatulence hear on` / `off` | Hear (or mute) the sound when others fart. |
+| `/flatulence say <0-100>` / `off` | Chance a reaction also blurts a spoken `/say` retort (default 15%). |
+| `/flatulence crowd <1-100>` / `off` | Cap how many reactions a single fart draws in a crowd (default 4). |
 | `/flat` | Short alias for `/flatulence`. |
+
+Your own `/prrt` is on a **60-second personal cooldown** — if you fart again
+too soon, the addon tells you how long to hold it in and does nothing else.
+(`/flatulence test` is exempt, since it doesn't broadcast.)
 
 Blizzard's built-in `/fart` is untouched by the addon — it stays a plain emote
 with no sound and no broadcast.

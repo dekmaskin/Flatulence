@@ -47,17 +47,56 @@ local DEFAULT_SOUND_WEIGHT = 10
 -- can react. Max 16 characters. Keep this identical across all your installs.
 local COMM_PREFIX = "Flatulence"
 
--- When someone nearby farts, a receiving client reacts with ONE of these
--- reaction, chosen at random and sent as a CUSTOM text emote (the "PlayerName
--- <your text>" format you get from /emote or /e). These read as full sentences
--- in the emote channel and are visible to everyone in range.
+-- When someone nearby farts, a receiving client reacts with ONE reaction,
+-- chosen at random and sent as a CUSTOM text emote (the "PlayerName <your text>"
+-- format you get from /emote or /e). These read as full sentences in the emote
+-- channel and are visible to everyone in range.
 --
--- The list is intentionally ordered from EXTREME DISGUST at the top to UTTER
--- DELIGHT at the bottom -- but selection is random, so ordering is only for
--- your reading convenience. Add, remove, or rewrite any line. Each string is
--- appended after your character's name by the game, so write them to continue
--- the sentence "<YourName> ...".
-local RESPONSE_EMOTES = {
+-- There are TWO categories of reaction and each reacting client picks exactly
+-- ONE of them per fart (see ReactToFart):
+--
+--   * HEARING (SOUND_REACTIONS): a fast reaction to the NOISE. Fires quickly
+--     (a fraction of a second to ~2s), because you hear a fart the instant it
+--     happens. These are about the sound -- laughing, wincing, impressed.
+--
+--   * SMELL (SMELL_REACTIONS): a DELAYED reaction to the STENCH. Fires several
+--     seconds later (SMELL_DELAY_MIN..SMELL_DELAY_MAX), because the cloud takes
+--     a moment to drift over and hit you. These are about the smell -- gagging,
+--     recoiling, watering eyes, and a few who are suspiciously into it.
+--
+-- Each string is appended after your character's name by the game, so write
+-- them to continue the sentence "<YourName> ...". Ordering within a list is
+-- only for readability; selection is random.
+
+-- HEARING reactions: quick responses to the SOUND of the fart.
+local SOUND_REACTIONS = {
+    -- ---- Startled / annoyed ----
+    "jumps at the sudden noise and spins around.",
+    "flinches hard at the thunderclap.",
+    "winces and covers their ears.",
+    "glares in the direction of the offending noise.",
+    "mutters that the whole zone probably heard that.",
+    "shoots an accusing glance around the group.",
+    -- ---- Amused ----
+    "snorts, trying and failing not to laugh.",
+    "stifles a giggle behind one hand.",
+    "raises an eyebrow at the impressive acoustics.",
+    "does a slow, appreciative nod at the sheer volume.",
+    "whistles, genuinely impressed by the range.",
+    "quietly awards that one a 7 out of 10 for tone.",
+    -- ---- Delight ----
+    "bursts into uncontrollable laughter at the sound.",
+    "cackles with unhinged glee.",
+    "applauds the thunderous performance.",
+    "cheers and demands an encore.",
+    "declares that a bard should write a song about that note.",
+    "salutes the sheer brass of it.",
+}
+
+-- SMELL reactions: DELAYED responses to the STENCH, once the cloud arrives.
+-- The list is loosely ordered from extreme disgust to utter delight, but
+-- selection is random.
+local SMELL_REACTIONS = {
     -- ---- Extreme disgust ----
     "gags violently and looks for the nearest exit.",
     "recoils in horror, eyes watering from the stench.",
@@ -67,34 +106,22 @@ local RESPONSE_EMOTES = {
     "pulls their tabard over their nose in sheer desperation.",
     "drops to the floor, overcome by the toxic cloud.",
     "frantically fans the air, coughing and wheezing.",
-    "glares with the fury of a thousand suns.",
     "questions every decision that led them to this moment.",
     -- ---- Mild disgust / annoyance ----
     "wrinkles their nose and takes a careful step away.",
     "raises an eyebrow and slowly backs out of the room.",
     "sighs and mutters something about needing new friends.",
     "waves a hand in front of their face, unimpressed.",
-    "shoots an accusing glance around the group.",
     "pinches their nose and refuses to breathe.",
     "shakes their head in profound disappointment.",
     "wonders aloud what on Azeroth you ate.",
-    "coughs pointedly and edges toward the door.",
-    "gives a slow, judgmental clap.",
+    "coughs as the cloud finally reaches them.",
     -- ---- Neutral / amused ----
-    "blinks, unsure whether to laugh or flee.",
+    "catches a whiff a moment later and blinks in disbelief.",
     "pretends not to notice but definitely noticed.",
-    "raises a single suspicious eyebrow.",
-    "stifles a snort and looks away.",
-    "quietly awards that one a 7 out of 10.",
-    "nods slowly, acknowledging a job well done.",
+    "raises a single suspicious eyebrow as it drifts over.",
     -- ---- Delight ----
-    "bursts into uncontrollable laughter.",
-    "cackles with unhinged glee.",
-    "applauds enthusiastically at the masterpiece.",
     "wipes away a tear of pure joy.",
-    "cheers and demands an encore.",
-    "salutes you with genuine respect.",
-    "declares that a bard should write a song about it.",
     "inhales deeply and sighs with inexplicable contentment.",
     "beams with pride as if you were their own child.",
     "throws confetti in celebration of the glorious release.",
@@ -103,11 +130,97 @@ local RESPONSE_EMOTES = {
     "blushes furiously and loosens their collar.",
     "fans themselves and whispers, 'do that again.'",
     "shivers and mutters that it's suddenly warm in here.",
-    "winks and says they like a partner with... confidence.",
-    "raises an intrigued eyebrow and steps a little closer.",
-    "swoons dramatically into the nearest chair.",
     "gazes at you with newfound and deeply concerning admiration.",
 }
+
+-- Occasionally, on top of the emote reaction, a character also blurts out a
+-- SPOKEN retort via /say. Unlike the emote lists (third-person "<Name> does X"),
+-- these are FIRST-PERSON lines the character actually says out loud, so write
+-- them as full spoken sentences. There's one list per category, matched to
+-- whichever reaction category (hearing/smell) the client picked, and the say
+-- fires on the same delay as that reaction. Governed by FlatulenceDB.sayChance.
+
+-- Spoken retorts to the SOUND of the fart (fast, alongside a hearing reaction).
+-- Deliberately unhinged and WoW-flavored, running from utter disgust at the top
+-- through amusement to a few that are... very much into it, at the bottom.
+-- Selection is random; the ordering is only for your reading convenience.
+local SOUND_SAY_LINES = {
+    -- ---- Disgust / alarm ----
+    "AZEROTH IS ENDING and it sounds exactly like THAT.",
+    "That's not a fart, that's a Scourge invasion horn!",
+    "Deafening Blast is supposed to be a warrior shout, not... whatever that was.",
+    "The Old Gods whispered and honestly it was less disturbing than THAT.",
+    "I heard that from the Dwarven District. From ORGRIMMAR.",
+    "Report to the guards, that was a sonic weapon of mass destruction.",
+    "Great, now the whole raid's DBM is going off for YOUR colon.",
+    -- ---- Amused ----
+    "Ten out of ten. Ragnaros himself couldn't blow that hot.",
+    "Deadmines has quieter cannons, friend.",
+    "That had more bass than a tauren war drum.",
+    "The bards of the Alliance will sing of that note for an age.",
+    "Even Deathwing's Cataclysm had less rumble.",
+    "That's a pull timer. Everyone get into position.",
+    "Somewhere in the Emerald Dream, a dragon just woke up.",
+    "Give that colon a Feat of Strength.",
+    -- ---- Delight / very into it ----
+    "Sound the Gong of Bataari, that deserves a raid summon.",
+    "Ooh. Do the harmonics again, I felt that in my soul.",
+    "By Elune, that resonance did things to me.",
+    "Play me like a moonlute, big guy. Again.",
+    "That's the sweetest music since the Well of Eternity. More.",
+}
+
+-- Spoken retorts to the SMELL of the fart (delayed, alongside a smell reaction).
+-- Same unhinged disgust-to-delight range, WoW-flavored throughout.
+local SMELL_SAY_LINES = {
+    -- ---- Utter disgust ----
+    "Smells like the inside of a gnoll's tabard down here.",
+    "By the Light, did you eat a murloc raw?!",
+    "This is a plague. Someone summon the Argent Crusade.",
+    "I've cleared Naxxramas that smelled better than this.",
+    "That's not gas, that's weaponized Blight. Report to Sylvanas.",
+    "I would rather kiss a Forsaken. And they're literally decomposing.",
+    "My eyes! It's like Fel magic but somehow WORSE.",
+    "Even the Undercity has ventilation, you monster.",
+    "This could drop a fel reaver. I can't feel my nose.",
+    -- ---- Grossed out but coping ----
+    "We need a priest. No -- we need a whole cathedral.",
+    "Mass Dispel! Someone cast Mass Dispel, NOW!",
+    "That would wilt the herbs in all of Sholazar Basin.",
+    "I'm logging out. I'm logging out and reporting you to a GM.",
+    "Tastes like Deviate Fish left in Un'Goro for a week.",
+    "That'll clear the auction house faster than a server crash.",
+    -- ---- Amused / delight ----
+    "Legendary. That drops off Ragnaros himself, surely.",
+    "Ahh, smells like victory. And regret. Mostly regret.",
+    "That has a bouquet. Notes of Duskwood, hint of tauren.",
+    "I'd give that a Realm First achievement, truly.",
+    -- ---- Very into it ----
+    "...why do I kind of like it? Is this a curse? Do it again.",
+    "Ohh, that's the good stuff. Bottle it, I'll pay in gold.",
+    "By Elune, I've never felt so alive. Marry me.",
+}
+
+-- How long (seconds) the SMELL reaction is delayed -- the cloud takes a moment
+-- to drift over. HEARING reactions use the short stagger below instead.
+local SMELL_DELAY_MIN = 4
+local SMELL_DELAY_MAX = 10
+
+-- Short random stagger (seconds) for HEARING reactions so a room full of people
+-- doesn't react in perfect unison.
+local SOUND_DELAY_MIN = 0.3
+local SOUND_DELAY_MAX = 2.0
+
+-- Crowd throttle: in a big group, we don't want everyone reacting at once. Each
+-- client, before reacting, counts how many Flatulence reactions it has already
+-- SEEN for the current fart; if that count has reached its (randomly chosen)
+-- cap, it holds back. Caps are rolled per-fart in 1..FlatulenceDB.crowdCap, so
+-- the visible reactions to any one fart settle around 1..crowdCap total. Small
+-- groups (fewer people than the cap) are unaffected -- everyone reacts. Set the
+-- saved crowdCap to 0 to disable the throttle entirely (everyone always reacts).
+-- How long (seconds) after a fart we keep counting reactions for it. Should
+-- comfortably exceed SMELL_DELAY_MAX so late smell reactions still count.
+local CROWD_WINDOW = 12
 
 -- Optional: set to true to react with the game's BUILT-IN stock emotes
 -- (/cough, /laugh, etc.) instead of the custom text sentences above. The
@@ -164,6 +277,18 @@ for index, line in pairs(FART_ACTION_EMOTES) do
     FART_ACTION_BY_TEXT[NormalizeEmote(line)] = index
 end
 
+-- Set of every REACTION line (hearing + smell), normalized, for recognition.
+-- The crowd throttle uses this to tell "someone reacted to a fart" apart from
+-- ordinary emote traffic, so it can count reactions and back off in a crowd.
+-- Built once at load from both reaction lists.
+local REACTION_TEXT_SET = {}
+for _, line in ipairs(SOUND_REACTIONS) do
+    REACTION_TEXT_SET[NormalizeEmote(line)] = true
+end
+for _, line in ipairs(SMELL_REACTIONS) do
+    REACTION_TEXT_SET[NormalizeEmote(line)] = true
+end
+
 -- Default saved settings.
 local DEFAULTS = {
     enabled = true,
@@ -173,6 +298,8 @@ local DEFAULTS = {
     reactChance = 100,  -- percent chance to react (0-100), keeps it from being spammy
     lastReactIndex = 0, -- avoid repeating the same reaction emote twice in a row
     hearOthers = true,  -- also play the sound locally when someone nearby farts
+    crowdCap = 4,       -- max reactions to a single fart across the crowd (0 = throttle off)
+    sayChance = 15,     -- % chance a reaction ALSO blurts a spoken /say retort (0 = never)
 }
 
 -- Local runtime state (not saved).
@@ -180,6 +307,21 @@ local playerName            -- our own name, used to ignore our own broadcasts
 local playerGUID            -- our own GUID; the reliable self-check (see IsSelf)
 local lastReactAt = 0       -- GetTime() of our last reaction, for cooldown
 local REACT_COOLDOWN = 8    -- seconds; prevents emote spam / feedback loops
+
+-- Personal cooldown on your OWN /prrt: you can only fart once per this many
+-- seconds. Keeps you from machine-gunning emotes (which also gets you throttled
+-- or muted by Blizzard's chat rate limiter). Does NOT gate reactions to others'
+-- farts (those have their own REACT_COOLDOWN) or /flatulence test.
+local lastFartAt = 0        -- GetTime() of our last /prrt, for the fart cooldown
+local FART_COOLDOWN = 60    -- seconds between your own farts
+
+-- Crowd throttle state. For the fart we're currently reacting to we track how
+-- many Flatulence reactions we've SEEN (ours + everyone else's), plus the
+-- randomly chosen cap for this fart and when the window started. When the seen
+-- count reaches the cap we stop reacting, so a crowd yields ~1-4 reactions.
+local crowdSeen = 0        -- reactions observed in the current window
+local crowdCap = 0         -- this window's cap (rolled 1..FlatulenceDB.crowdCap)
+local crowdWindowAt = 0    -- GetTime() the current window started (0 = none)
 
 -- De-duplication: a player who is BOTH grouped with us AND within emote range
 -- delivers the same fart twice -- once via the group addon message and once via
@@ -234,6 +376,14 @@ end
 local function SendTextEmote(text)
     if SendChatMessage then
         SendChatMessage(text, "EMOTE")
+    end
+end
+
+-- Say something out loud (proximity-based /say). Used for the occasional spoken
+-- retort. "SAY" is available on every game version, same as "EMOTE".
+local function SendSay(text)
+    if SendChatMessage then
+        SendChatMessage(text, "SAY")
     end
 end
 
@@ -370,10 +520,20 @@ local function BroadcastFart(soundIndex)
     end
 end
 
--- Pick a random reaction from the active list, avoiding an immediate repeat.
--- Returns the chosen entry (a custom sentence, or a stock token in stock mode).
-local function PickReaction()
-    local list = USE_STOCK_EMOTES and STOCK_EMOTE_TOKENS or RESPONSE_EMOTES
+-- Pick a random reaction from the given category list, avoiding an immediate
+-- repeat. `category` is "sound" or "smell". In stock-emote mode both categories
+-- fall back to the single STOCK_EMOTE_TOKENS list (the split only applies to
+-- the custom-sentence reactions). Returns the chosen string.
+local function PickReaction(category)
+    local list
+    if USE_STOCK_EMOTES then
+        list = STOCK_EMOTE_TOKENS
+    elseif category == "smell" then
+        list = SMELL_REACTIONS
+    else
+        list = SOUND_REACTIONS
+    end
+
     local count = #list
     if count == 0 then return nil end
     if count == 1 then return list[1] end
@@ -386,9 +546,38 @@ local function PickReaction()
     return list[index]
 end
 
+-- Start (or continue) the crowd-throttle window for a fart. If no window is
+-- open, or the previous one has expired, begin a fresh one: reset the seen
+-- count and roll a new random cap in 1..FlatulenceDB.crowdCap (or an unbounded
+-- cap when the throttle is disabled with crowdCap = 0).
+local function EnsureCrowdWindow(now)
+    if crowdWindowAt == 0 or (now - crowdWindowAt) > CROWD_WINDOW then
+        crowdWindowAt = now
+        crowdSeen = 0
+        local maxCap = tonumber(FlatulenceDB.crowdCap) or 4
+        -- maxCap <= 0 disables the throttle: use a very high cap so we never
+        -- suppress. Otherwise roll a per-fart cap in 1..maxCap.
+        if maxCap <= 0 then
+            crowdCap = math.huge
+        else
+            crowdCap = math.random(1, maxCap)
+        end
+    end
+end
+
+-- Record that we OBSERVED a Flatulence reaction (from anyone, including our own
+-- echo) within the current window, so the crowd throttle can back off once
+-- enough people have reacted. Called from the emote handler when an incoming
+-- emote matches one of our known reaction lines.
+local function NoteReactionSeen()
+    local now = GetTime and GetTime() or 0
+    EnsureCrowdWindow(now)
+    crowdSeen = crowdSeen + 1
+end
+
 -- Handle someone else's fart: play the same sound locally (if enabled) and
--- react with an emote, respecting settings, a chance roll, and a cooldown that
--- prevents spam/feedback loops.
+-- react with an emote, respecting settings, a chance roll, a cooldown, and the
+-- crowd throttle that keeps a big room from erupting all at once.
 local function ReactToFart(sourceName, soundIndex)
     -- Never react in combat: reactions post text emotes / stock emotes, which
     -- Blizzard restricts during combat, and combat is no time for farting.
@@ -410,18 +599,63 @@ local function ReactToFart(sourceName, soundIndex)
     local chance = tonumber(FlatulenceDB.reactChance) or 100
     if chance < 100 and math.random(100) > chance then return end
 
-    local reaction = PickReaction()
+    -- Open/refresh the crowd window for this fart. If we've already seen the
+    -- cap's worth of reactions, hold back so the crowd stays around 1-4 total.
+    EnsureCrowdWindow(now)
+    if crowdSeen >= crowdCap then return end
+
+    -- Pick ONE category per fart: fast HEARING reaction or delayed SMELL
+    -- reaction. 50/50 split.
+    local category = (math.random(2) == 1) and "sound" or "smell"
+
+    local reaction = PickReaction(category)
     if not reaction then return end
 
+    -- Small chance to ALSO blurt a spoken /say retort matching the category.
+    -- Rolled now (not at fire time) so we can pick the line up front; it's
+    -- delivered alongside the emote after the same delay. Not used in stock
+    -- mode -- the spoken lines only make sense with the custom-sentence set.
+    local sayLine
+    if not USE_STOCK_EMOTES then
+        local sayChance = tonumber(FlatulenceDB.sayChance) or 0
+        if sayChance > 0 and math.random(100) <= sayChance then
+            local list = (category == "smell") and SMELL_SAY_LINES or SOUND_SAY_LINES
+            if #list > 0 then
+                sayLine = list[math.random(#list)]
+            end
+        end
+    end
+
     lastReactAt = now
-    -- Small random delay so a room full of people doesn't react in unison.
-    After(0.3 + math.random() * 1.7, function()
+
+    -- Category-appropriate delay: hearing is quick (you hear it immediately),
+    -- smell is delayed (the cloud takes a few seconds to reach you).
+    local delay
+    if category == "smell" then
+        delay = SMELL_DELAY_MIN + math.random() * (SMELL_DELAY_MAX - SMELL_DELAY_MIN)
+    else
+        delay = SOUND_DELAY_MIN + math.random() * (SOUND_DELAY_MAX - SOUND_DELAY_MIN)
+    end
+
+    After(delay, function()
         -- Re-check: combat may have started during the delay.
         if InCombat() then return end
+        -- Re-check the crowd throttle: other people's reactions may have landed
+        -- during our delay (especially for the long smell delay), so if the
+        -- room already hit the cap while we waited, stay quiet.
+        local later = GetTime and GetTime() or 0
+        if crowdWindowAt ~= 0 and (later - crowdWindowAt) <= CROWD_WINDOW
+            and crowdSeen >= crowdCap then
+            return
+        end
         if USE_STOCK_EMOTES then
             DoEmote(reaction)          -- built-in emote token, e.g. "COUGH"
         else
             SendTextEmote(reaction)    -- custom sentence text emote
+        end
+        -- Occasional spoken retort, delivered right after the emote.
+        if sayLine then
+            SendSay(sayLine)
         end
     end)
 end
@@ -439,9 +673,19 @@ local function DoFart()
     if not FlatulenceDB.enabled then return end
     if InCombat() then return end
 
+    -- Personal cooldown: only one fart per FART_COOLDOWN seconds. Tell the
+    -- player how long is left rather than silently swallowing the command.
+    local now = GetTime and GetTime() or 0
+    local remaining = FART_COOLDOWN - (now - lastFartAt)
+    if remaining > 0 then
+        Print(("hold it in for another %d sec."):format(math.ceil(remaining)))
+        return
+    end
+
     local index = PlayFart()
     if not index then return end
 
+    lastFartAt = now
     BroadcastFart(index)
 
     local action = FART_ACTION_EMOTES[index]
@@ -558,6 +802,19 @@ local function OnTextEmote(message, sender, ...)
     local normalized = NormalizeEmote(message)
     if not normalized then return end
 
+    -- Is this emote a Flatulence REACTION (hearing or smell)? If so, it's not a
+    -- fart -- count it toward the crowd throttle so we back off in a busy room,
+    -- then stop. We deliberately count our OWN reaction echo too, since the cap
+    -- is about total visible reactions. Like fart signatures, the incoming
+    -- message is wrapped as "PlayerName <action>", so we substring-match each
+    -- known reaction line rather than comparing the whole string.
+    for line in pairs(REACTION_TEXT_SET) do
+        if normalized:find(line, 1, true) then
+            NoteReactionSeen()
+            return
+        end
+    end
+
     -- Find which (if any) of our signature lines this emote contains.
     local soundIndex
     for line, index in pairs(FART_ACTION_BY_TEXT) do
@@ -638,6 +895,46 @@ local function HandleSlash(msg)
             Print(FlatulenceDB.hearOthers and "you will now hear others' farts."
                 or "you will no longer hear others' farts.")
         end
+    elseif cmd == "say" then
+        if rest == "off" then
+            FlatulenceDB.sayChance = 0
+            Print("spoken retorts off.")
+        elseif tonumber(rest) then
+            local chance = math.max(0, math.min(100, math.floor(tonumber(rest))))
+            FlatulenceDB.sayChance = chance
+            if chance == 0 then
+                Print("spoken retorts off.")
+            else
+                Print("spoken retort chance set to " .. chance .. "%.")
+            end
+        else
+            local chance = tonumber(FlatulenceDB.sayChance) or 0
+            if chance <= 0 then
+                Print("spoken retorts are off. Use /flatulence say <1-100> to enable.")
+            else
+                Print("spoken retort chance is " .. chance .. "%. Use /flatulence say <0-100> or 'off'.")
+            end
+        end
+    elseif cmd == "crowd" then
+        if rest == "off" then
+            FlatulenceDB.crowdCap = 0
+            Print("crowd throttle off -- everyone nearby reacts to every fart.")
+        elseif tonumber(rest) then
+            local cap = math.max(0, math.min(100, math.floor(tonumber(rest))))
+            FlatulenceDB.crowdCap = cap
+            if cap == 0 then
+                Print("crowd throttle off -- everyone nearby reacts to every fart.")
+            else
+                Print("crowd throttle set: up to " .. cap .. " reaction(s) per fart in a big group.")
+            end
+        else
+            local cap = tonumber(FlatulenceDB.crowdCap) or 4
+            if cap <= 0 then
+                Print("crowd throttle is off. Use /flatulence crowd <1-100> to cap reactions.")
+            else
+                Print("crowd throttle caps reactions at " .. cap .. " per fart. Use /flatulence crowd <n> or 'off'.")
+            end
+        end
     else
         Print("commands:")
         Print("  /flatulence on | off | toggle  -- your fart sound")
@@ -645,6 +942,8 @@ local function HandleSlash(msg)
         Print("  /flatulence react on | off      -- react to others' farts")
         Print("  /flatulence react <0-100>       -- set reaction chance %")
         Print("  /flatulence hear on | off       -- hear others' farts")
+        Print("  /flatulence say <0-100> | off   -- chance of a spoken /say retort")
+        Print("  /flatulence crowd <1-100> | off -- cap reactions per fart in a crowd")
     end
 end
 
