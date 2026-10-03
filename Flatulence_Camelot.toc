@@ -1,4 +1,4 @@
-## Interface: 11508
+## Interface: 16001
 ## Title: Flatulence
 ## Notes: Plays a random fart sound when you use the /prrt (or /brap) emote.
 ## Author: dekmaskin
